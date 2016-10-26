@@ -1,0 +1,497 @@
+//+------------------------------------------------------------------+
+//|                                                      Linkfx .mq4 |
+//|                                                            Qasim |
+//|                                                                  |
+//+------------------------------------------------------------------+
+#property copyright "Linkfx/Qasim"
+#property link      ""    
+#property version   "3.83"
+#property strict    "Qk7469648"
+
+enum tf
+{M1,
+ M5,
+ M15,
+ M30,
+ H1,
+ H4,
+ D1,
+ W1,
+ MN1,
+};
+
+enum rule
+{FollowTrend,
+ OppositeTrend,
+};
+
+enum ZN
+{InsideZone,
+ OutsideZone,
+};
+input double Lot=0.01;
+input int TP=200;
+input int SL=600;
+input int TrailingDistance=600;
+input int Xbar=3;
+input int XbarChart=3;//Xbar on current chart
+input int CandlesTrade=3;
+input tf TrendTf=M15;
+input int FirstTrade=5;
+input int WaitTrade=60;
+input int MaxTrades=3;//Ongoing trades
+input int TradeCount=20;
+input rule TrendRule=FollowTrend;
+
+input ZN  TypeOfZone=InsideZone;
+input double ZonePercent=30;
+input tf ZoneTf=W1;
+input int BarsForExtremes=200;
+
+extern int MaMetod  = 2;
+extern int MaPeriod = 4;
+extern int MaMetod2  = 2;
+extern int MaPeriod2 = 1;
+
+
+
+bool mod,sel,cl;
+int tic,z;
+ENUM_TIMEFRAMES tff=PERIOD_CURRENT;
+ENUM_TIMEFRAMES tff1=PERIOD_CURRENT;
+
+string tfname;
+static datetime Beg;
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+  {if(TrendTf==M1){tff=PERIOD_M1;tfname="M1";}
+   if(TrendTf==M5){tff=PERIOD_M5;tfname="M5";}
+   if(TrendTf==M15){tff=PERIOD_M15;tfname="M15";}
+   if(TrendTf==M30){tff=PERIOD_M30;tfname="M30";}
+   if(TrendTf==H1){tff=PERIOD_H1;tfname="H1";}
+   if(TrendTf==H4){tff=PERIOD_H4;tfname="H4";}
+   if(TrendTf==D1){tff=PERIOD_D1;tfname="D1";}
+   if(TrendTf==W1){tff=PERIOD_W1;tfname="W1";}
+   if(TrendTf==MN1){tff=PERIOD_MN1;tfname="MN1";}
+   
+   if(ZoneTf==M1){tff1=PERIOD_M1;}
+   if(ZoneTf==M5){tff1=PERIOD_M5;}
+   if(ZoneTf==M15){tff1=PERIOD_M15;}
+   if(ZoneTf==M30){tff1=PERIOD_M30;}
+   if(ZoneTf==H1){tff1=PERIOD_H1;}
+   if(ZoneTf==H4){tff1=PERIOD_H4;}
+   if(ZoneTf==D1){tff1=PERIOD_D1;}
+   if(ZoneTf==W1){tff1=PERIOD_W1;}
+   if(ZoneTf==MN1){tff1=PERIOD_MN1;}
+   Beg=TimeCurrent();
+   
+   
+//---
+   
+//---
+   return(INIT_SUCCEEDED);
+  }
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {ObjectDelete("Up");
+ ObjectDelete("Down");
+//---
+   
+  }
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+  {Risui();
+   int totalhist=0;
+   datetime lastcl=0;  
+   datetime clt=0; 
+   for(z=OrdersHistoryTotal()-1;z>=0;z--)
+      {sel=OrderSelect(z,SELECT_BY_POS,MODE_HISTORY);
+       if((OrderType()==OP_SELL||OrderType()==OP_BUY)&&OrderSymbol()==Symbol()&&OrderOpenTime()>Beg)
+            {totalhist++;
+
+            }
+      } 
+  
+ 
+  
+  int total=0;
+  bool newb=NewBar();
+  double distsl=0;
+  double disttp=0;
+  datetime last=0;
+  for(z=OrdersTotal()-1;z>=0;z--)
+      {sel=OrderSelect(z,SELECT_BY_POS);
+       if(OrderSymbol()==Symbol())
+         {if(OrderOpenTime()>last)
+            {
+             last=OrderOpenTime();
+            }
+          if(TrailingDistance!=0)Trailing();
+          if(OrderType()==OP_BUY)
+            {total++;
+             if(OrderStopLoss()!=0)distsl=Bid-OrderStopLoss();
+             if(OrderTakeProfit()!=0)disttp=OrderTakeProfit()-Bid;
+            }
+          if(OrderType()==OP_SELL)
+            {total++;
+             if(OrderStopLoss()!=0)distsl=OrderStopLoss()-Ask;
+             if(OrderTakeProfit()!=0)disttp=Ask-OrderTakeProfit();
+            }  
+         }
+      }
+      
+            
+      
+  int distsl1=int(distsl/Point);
+  int disttp1=int(disttp/Point);
+  
+  string name=TrendName();   
+   string count;
+   if(TradeCount-total-totalhist==0)count="No trade";
+   else
+     {
+      count=string(TradeCount-total-totalhist);
+     }
+  string rulee;
+  if(TrendRule==OppositeTrend)
+   {rulee="Opposite of trend";
+   } 
+  else
+    {
+     rulee="Follow trend";
+    }   
+  Comment("TakeProfit = ",TP,
+  "\n","StopLoss = ",SL, 
+  "\n","Distance to StopLoss = ",distsl1,
+  "\n","Distance to TakeProfit = ",disttp1,
+  "\n"," Trend higher timeframe = ",tfname,
+  "\n"," Waiting for trend  = ",name, 
+  "\n"," First trade  = ",FirstTrade," min",  
+  "\n"," Next trade  = ",WaitTrade," min", 
+  "\n"," Number of ongoing trades : ",MaxTrades-total,
+  "\n"," Trade Count : ",count,
+  
+  "\n"," Trading rule: ",rulee
+  );
+  
+  if(total+totalhist>=TradeCount)return;
+      
+  if(total==0&&(TimeCurrent()>Beg+FirstTrade*60||FirstTrade==0)
+  &&total<MaxTrades)
+      {OpenOrderF();
+      }    
+  if(total!=0&&total<MaxTrades
+  &&(TimeCurrent()>last+WaitTrade*60||WaitTrade==0))
+   {OpenOrderF();
+   }
+   
+   
+   
+     
+//---
+   
+  }
+//+------------------------------------------------------------------+
+void Risui()
+{
+ if(ZonePercent==0)return;
+ double top=iHigh(NULL,0,iHighest(NULL,0,MODE_HIGH,BarsForExtremes,0));
+ double bottom=iLow(NULL,0,iLowest(NULL,0,MODE_LOW,BarsForExtremes,0));
+ double upper=top-(top-bottom)*ZonePercent/200;
+ double lower=bottom+(top-bottom)*ZonePercent/200;
+ 
+ ObjectDelete("Up");
+ ObjectDelete("Down");
+ HLineCreate(0,"Up",0,upper,Red,0,1);
+ HLineCreate(0,"Down",0,lower,Red,0,1);
+   
+
+}
+
+bool Zona()
+{bool r=true;
+ if(ZonePercent==1)return(true);
+ double top=iHigh(NULL,0,iHighest(NULL,0,MODE_HIGH,BarsForExtremes,0));
+ double bottom=iLow(NULL,0,iLowest(NULL,0,MODE_LOW,BarsForExtremes,0));
+ double upper=top-(top-bottom)*ZonePercent/200;
+ double lower=bottom+(top-bottom)*ZonePercent/200;
+ if(TypeOfZone==InsideZone)
+   {if(Bid>lower&&Bid<upper)
+      {return(true);
+      }
+   }
+ if(TypeOfZone==OutsideZone)
+   {if(Bid<lower||Bid>upper)
+      {
+       return(true);
+      }
+   } 
+
+   
+ return(r);
+}
+
+string TrendName()
+{int tr=Trend(); 
+ if(tr==1)return("Long trend");
+ else
+   {
+    if(tr==-1)return("Short trend");
+    else
+      {
+       return("No trend");
+      }
+   }
+}
+
+int Trend()
+{int r=-2;
+if(Xbar==1)return(1);
+bool sell=true;
+bool buy=true;
+for(z=Xbar;z>=1;z--)
+   {double open1=iCustom(NULL,tff,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,z);
+      double close1=iCustom(NULL,tff,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,z);
+
+   
+    if(close1>open1)
+      {sell=true;
+      }
+    if(close1<open1)
+      {buy=true;
+      }
+   }
+if(buy)return(1);
+if(sell)return(1);
+   
+return(-2);
+}
+
+int TrendOnCur()
+{int r=-2;
+if(XbarChart==1)return(1);
+bool sell=true;
+bool buy=true;
+for(z=XbarChart;z>=1;z--)
+   {double open1=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,z);
+    double close1=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,z);
+    
+   double open2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,z+1);
+   double close2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,z+1);
+    
+    if(close1>open1)
+      {sell=true;
+      }
+    if(close1<open1)
+      {buy=true;
+      }
+    if(MathAbs(open2-close2)>MathAbs(open1-close1)&&z!=XbarChart)
+      {buy=true;
+       sell=true;
+      }
+   }
+if(buy)return(1);
+if(sell)return(1);
+   
+return(-2);
+}
+
+
+
+bool NewBar()
+{
+static datetime lastbar = 0;
+datetime curbar = Time[0];
+if(lastbar!=curbar)
+{
+lastbar=curbar;
+return (true);
+}
+else return(true);
+}
+
+int Signal()
+{int r=1;
+
+double open1=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,1);
+double open2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,2);
+
+
+double close1=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,1);
+double close2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,2);
+
+
+int tr=Trend();
+
+if(open1>close1)
+{for(z=CandlesTrade-1;z>=2;z--)
+   {close2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,z);
+    open2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,z);
+    if(open2<close2)
+      {return(0);
+      }
+   }
+    close2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,CandlesTrade);
+    open2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,CandlesTrade);  
+   
+   if(open2<close2)
+   {
+   return(1);
+   }
+}
+if(open1<close1)
+{for(z=CandlesTrade-1;z>=2;z--)
+   {close2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,z);
+    open2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,z);
+    if(open2>close2)
+      {return(1);
+      }
+   }
+    close2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,1,CandlesTrade);
+    open2=iCustom(NULL,0,"Heiken_Ashi_Smoothed_TF",MaMetod,MaPeriod,MaMetod2,MaPeriod2,0,CandlesTrade);  
+   
+   if(open2>close2)
+   {
+   return(1);
+   }
+
+
+}
+return(r);
+}
+
+int SignalF()
+{int r=1;
+
+int tr=Trend();
+int tr_cur=TrendOnCur();
+if((((tr==0||tr==-1)&&(tr_cur==0||tr_cur==-1)&&TrendRule==FollowTrend)
+||((tr==0||tr==1)&&(tr_cur==0||tr_cur==1)&&TrendRule==OppositeTrend)))
+return(0);
+
+if((((tr==0||tr==1)&&(tr_cur==0||tr_cur==1)&&TrendRule==FollowTrend)
+||((tr==0||tr==-1)&&(tr_cur==0||tr_cur==-1)&&TrendRule==OppositeTrend)))
+return(1);
+
+return(r);
+}
+
+void OpenOrder()
+{int sign=Signal();
+
+if(sign==1)
+   {BuyOrder();
+   }   
+if(sign==-1)
+   {SellOrder();
+   }   
+}
+
+void OpenOrderF()
+{int sign=SignalF();
+bool zn=Zona();  
+if(sign==1&&zn)
+   {BuyOrder();
+   }   
+if(sign==-1&&zn)
+   {SellOrder();
+   }   
+}
+
+
+void BuyOrder()
+{double sl=SL*Point;
+RefreshRates();
+ tic=OrderSend(NULL,OP_BUY,Lot,Ask,3,0,0);
+ sel=OrderSelect(tic,SELECT_BY_TICKET);
+ if(sl>0&&TP>0)
+ mod=OrderModify(OrderTicket(),OrderOpenPrice(),OrderOpenPrice()-sl,OrderOpenPrice()+TP*Point,0);
+ else
+   {if(sl>0)
+    mod=OrderModify(OrderTicket(),OrderOpenPrice(),OrderOpenPrice()-sl,OrderTakeProfit(),0);
+    if(TP>0)
+    mod=OrderModify(OrderTicket(),OrderOpenPrice(),OrderStopLoss(),OrderOpenPrice()+TP*Point,0);
+   }
+}
+
+void SellOrder()
+{
+ double sl=SL*Point;
+RefreshRates();
+ tic=OrderSend(NULL,OP_SELL,Lot,Bid,3,0,0);
+ sel=OrderSelect(tic,SELECT_BY_TICKET);
+ if(sl>0&&TP>0)
+ mod=OrderModify(OrderTicket(),OrderOpenPrice(),OrderOpenPrice()+sl,OrderOpenPrice()-TP*Point,0);
+ else
+   {if(sl>0)
+    mod=OrderModify(OrderTicket(),OrderOpenPrice(),OrderOpenPrice()+sl,OrderTakeProfit(),0);
+    if(TP>0)
+    mod=OrderModify(OrderTicket(),OrderOpenPrice(),OrderStopLoss(),OrderOpenPrice()-TP*Point,0);
+   }
+}  
+
+void Trailing()
+{double bid=Bid;
+ double ask=Ask;
+if(OrderType()==OP_BUY)
+   {if(//bid-OrderOpenPrice()>StartTrailing*Point&&
+    NormalizeDouble(bid-OrderStopLoss(),Digits)>NormalizeDouble(TrailingDistance*Point,Digits))
+      {mod=OrderModify(OrderTicket(),OrderOpenPrice(),NormalizeDouble(bid-TrailingDistance*Point,Digits),OrderTakeProfit(),0);         
+      }
+   }
+if(OrderType()==OP_SELL)
+   {if(//OrderOpenPrice()-ask>StartTrailing*Point&&
+    NormalizeDouble(OrderStopLoss()-ask,Digits)>NormalizeDouble(TrailingDistance*Point,Digits)||OrderStopLoss()==0)
+      {mod=OrderModify(OrderTicket(),OrderOpenPrice(),NormalizeDouble(ask+TrailingDistance*Point,Digits),OrderTakeProfit(),0);         
+      }
+   }
+}
+
+bool HLineCreate(const long            chart_ID=0,        // ID графика
+                 const string          name="HLine",      // имя линии
+                 const int             sub_window=0,      // номер подокна
+                 double                price=0,           // цена линии
+                 const color           clr=clrRed,        // цвет линии
+                 const ENUM_LINE_STYLE style=STYLE_SOLID, // стиль линии
+                 const int             width=1          // толщина линии
+                 )         // приоритет на нажатие мышью
+  {
+//--- если цена не задана, то установим ее на уровне текущей цены Bid
+   if(!price)
+      price=SymbolInfoDouble(Symbol(),SYMBOL_BID);
+//--- сбросим значение ошибки
+   ResetLastError();
+//--- создадим горизонтальную линию
+   if(!ObjectCreate(chart_ID,name,OBJ_HLINE,sub_window,0,price))
+     {
+      Print(__FUNCTION__,
+            ": не удалось создать горизонтальную линию! Код ошибки = ",GetLastError());
+      return(false);
+     }
+//--- установим цвет линии
+   ObjectSetInteger(chart_ID,name,OBJPROP_COLOR,clr);
+//--- установим стиль отображения линии
+   ObjectSetInteger(chart_ID,name,OBJPROP_STYLE,style);
+//--- установим толщину линии
+   ObjectSetInteger(chart_ID,name,OBJPROP_WIDTH,width);
+//--- отобразим на переднем (false) или заднем (true) плане
+   ObjectSetInteger(chart_ID,name,OBJPROP_BACK,false);
+//--- включим (true) или отключим (false) режим перемещения линии мышью
+//--- при создании графического объекта функцией ObjectCreate, по умолчанию объект
+//--- нельзя выделить и перемещать. Внутри же этого метода параметр selection
+//--- по умолчанию равен true, что позволяет выделять и перемещать этот объект
+   ObjectSetInteger(chart_ID,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(chart_ID,name,OBJPROP_SELECTED,false);
+//--- скроем (true) или отобразим (false) имя графического объекта в списке объектов
+   ObjectSetInteger(chart_ID,name,OBJPROP_HIDDEN,true);
+//--- установим приоритет на получение события нажатия мыши на графике
+   ObjectSetInteger(chart_ID,name,OBJPROP_ZORDER,0);
+//--- успешное выполнение
+   return(true);
+  }
